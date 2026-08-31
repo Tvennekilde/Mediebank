@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medie- og Journalistregister</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --border: #dde1e6;
+    --text: #1f2430;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --danger: #dc2626;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+  }
+  header h1 { margin: 0 0 12px 0; font-size: 20px; }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  nav button {
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 14px;
+  }
+  nav button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  main { max-width: 980px; margin: 24px auto; padding: 0 16px; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { margin-top: 0; font-size: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid.full { grid-template-columns: 1fr; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  .field { margin-bottom: 12px; }
+  .row-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  button.btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button.btn:hover { background: var(--accent-hover); }
+  button.btn.secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  button.btn.danger { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: #f0f4ff; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .status { font-size: 13px; margin-top: 6px; min-height: 18px; }
+  .status.ok { color: #16a34a; }
+  .status.err { color: var(--danger); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: var(--accent); font-size: 12px; }
+  #journalistDetail { border-top: 3px solid var(--accent); }
+  .kontakt-item { padding: 10px 0; border-bottom: 1px dashed var(--border); }
+  .kontakt-item:last-child { border-bottom: none; }
+  .kontakt-date { font-size: 12px; color: var(--muted); }
+  .config-warning { background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; }
+  .search-result { padding: 10px 0; border-bottom: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Medie- og Journalistregister</h1>
+  <nav>
+    <button data-view="medier" class="active">Medier</button>
+    <button data-view="journalister">Journalister</button>
+    <button data-view="geosearch">Geografisk søgning</button>
+  </nav>
+</header>
+
+<main>
+  <div id="configWarning" class="config-warning" style="display:none;">
+    Supabase-konfiguration mangler. Åbn denne fil og udfyld <code>SUPABASE_URL</code> og
+    <code>SUPABASE_ANON_KEY</code> øverst i &lt;script&gt;-tagget.
+  </div>
+
+  <!-- ============ MEDIER ============ -->
+  <section id="view-medier" class="view active">
+    <div class="card">
+      <h2 id="medieFormTitle">Opret nyt medie</h2>
+      <input type="hidden" id="medieId">
+      <div class="grid">
+        <div class="field">
+          <label>Navn</label>
+          <input id="medieNavn" placeholder="f.eks. Lokalavisen Nord">
+        </div>
+        <div class="field">
+          <label>By</label>
+          <input id="medieBy" placeholder="f.eks. Aalborg">
+        </div>
+        <div class="field">
+          <label>Gadeadresse</label>
+          <input id="medieAdresse" placeholder="f.eks. Vestergade 12">
+        </div>
+        <div class="field">
+          <label>Postnummer</label>
+          <input id="mediePostnr" placeholder="f.eks. 9000">
+        </div>
+        <div class="field">
+          <label>E-mail</label>
+          <input id="medieEmail" placeholder="f.eks. redaktion@medie.dk">
+        </div>
+      </div>
+      <div class="field grid full">
+        <label>Generelle noter</label>
+        <textarea id="medieNoter" placeholder="Fx dækningsområde, deadlines, redaktionel profil..."></textarea>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <label>Breddegrad (latitude)</label>
+          <input id="medieLat" type="number" step="any" placeholder="Udfyldes automatisk">
+        </div>
+        <div class="field">
+          <label>Længdegrad (longitude)</label>
+          <input id="medieLng" type="number" step="any" placeholder="Udfyldes automatisk">
+        </div>
+      </div>
+      <div class="field" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="medieLandsdaekkende" style="width:auto;">
+        <label for="medieLandsdaekkende" style="margin:0;">
+          Landsdækkende medie (medtages altid i geografisk søgning, uanset radius og adresse)
+        </label>
+      </div>
+      <div class="row-actions">
+        <button class="btn secondary" id="btnGeokod">Geokod adresse</button>
+        <button class="btn" id="btnGemMedie">Gem medie</button>
+        <button class="btn secondary" id="btnRydMedie">Ryd formular</button>
+      </div>
+      <div id="medieStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Alle medier</h2>
+      <table>
+        <thead>
+          <tr><th>Navn</th><th>Adresse</th><th>E-mail</th><th>Koordinater</th><th></th></tr>
+        </thead>
+        <tbody id="medieTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ JOURNALISTER ============ -->
+  <section id="view-journalister" class="view">
+    <div class="card">
+      <h2 id="journalistFormTitle">Opret ny journalist</h2>
+      <input type="hidden" id="journalistId">
+      <div class="grid">
+        <div class="field">
+          <label>Navn</label>
+          <input id="journalistNavn" placeholder="f.eks. Anna Hansen">
+        </div>
+        <div class="field">
+          <label>Medie</label>
+          <select id="journalistMedie"></select>
+        </div>
+        <div class="field">
+          <label>Telefon</label>
+          <input id="journalistTelefon" placeholder="f.eks. 12345678">
+        </div>
+        <div class="field">
+          <label>E-mail</label>
+          <input id="journalistEmail" placeholder="f.eks. anna@medie.dk">
+        </div>
+      </div>
+      <div class="field grid full">
+        <label>Noter</label>
+        <textarea id="journalistNoter" placeholder="Fx interesseområder, hvordan de foretrækker at blive kontaktet..."></textarea>
+      </div>
+      <div class="row-actions">
+        <button class="btn" id="btnGemJournalist">Gem journalist</button>
+        <button class="btn secondary" id="btnRydJournalist">Ryd formular</button>
+      </div>
+      <div id="journalistStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Alle journalister</h2>
+      <p class="muted">Klik på en journalist for at se og tilføje kontakthistorik.</p>
+      <table>
+        <thead>
+          <tr><th>Navn</th><th>Medie</th><th>Telefon</th><th>E-mail</th><th></th></tr>
+        </thead>
+        <tbody id="journalistTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="journalistDetail" style="display:none;">
+      <h2 id="detailNavn"></h2>
+      <p class="muted" id="detailMedie"></p>
+      <h3>Tilføj kontaktnote</h3>
+      <div class="grid">
+        <div class="field">
+          <label>Dato/tidspunkt</label>
+          <input id="kontaktDato" type="datetime-local">
+        </div>
+      </div>
+      <div class="field grid full">
+        <label>Noter (hvad blev der talt om / resultat)</label>
+        <textarea id="kontaktNoter" placeholder="Fx: Ringet ang. pressemeddelelse X, aftalt opfølgning næste uge..."></textarea>
+      </div>
+      <div class="row-actions">
+        <button class="btn" id="btnGemKontakt">Tilføj til historik</button>
+      </div>
+      <div id="kontaktStatus" class="status"></div>
+
+      <h3>Kontakthistorik (nyeste øverst)</h3>
+      <div id="kontaktListe"></div>
+    </div>
+  </section>
+
+  <!-- ============ GEO SØGNING ============ -->
+  <section id="view-geosearch" class="view">
+    <div class="card">
+      <h2>Find journalister nær en destination</h2>
+      <div class="grid">
+        <div class="field">
+          <label>Destination (adresse)</label>
+          <input id="geoAdresse" placeholder="f.eks. Rådhuspladsen 1, København">
+        </div>
+        <div class="field">
+          <label>Radius (km)</label>
+          <input id="geoRadius" type="number" value="25" min="1">
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="btn" id="btnGeoSoeg">Søg</button>
+      </div>
+      <div id="geoStatus" class="status"></div>
+    </div>
+
+    <div class="card" id="geoResultCard" style="display:none;">
+      <h2 id="geoResultTitle">Resultater</h2>
+      <div id="geoResultList"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// =========================================================
+// KONFIGURATION — udfyld disse to værdier fra dit Supabase-projekt
+// Project Settings -> API -> Project URL / anon public key
+// =========================================================
+const SUPABASE_URL = "https://brxwkqynmcyjnyjpetlk.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJyeHdrcXlubWN5am55anBldGxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4MjQ2NjYsImV4cCI6MjEwMzQwMDY2Nn0.GhCAwIHezb6mItDZ664gpu8g8Kb8OSykvctVgtbqneA";
+
+let supabaseClient = null;
+if (!SUPABASE_URL.includes("DIT-PROJEKT") && !SUPABASE_ANON_KEY.includes("DIN-ANON-KEY")) {
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+  document.getElementById("configWarning").style.display = "block";
+}
+
+// ---------------------------------------------------------
+// State
+// ---------------------------------------------------------
+let medierCache = [];
+let journalisterCache = [];
+let currentJournalistId = null;
+
+// ---------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------
+document.querySelectorAll("nav button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-" + btn.dataset.view).classList.add("active");
+  });
+});
+
+// ---------------------------------------------------------
+// Geokodning: DAWA (Danmarks Adressers Web API) med Nominatim som fallback
+// Returnerer { lat, lon } eller null
+// ---------------------------------------------------------
+async function geocodeAddress(fritekstAdresse) {
+  const q = fritekstAdresse.trim();
+  if (!q) return null;
+
+  // 1) Forsøg DAWA (bedst til danske adresser)
+  try {
+    const url = `https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(q)}&struktur=mini&per_side=1`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const hit = data[0];
+        // Understøt begge mulige svarformer fra DAWA
+        const lon = hit.x ?? hit.adgangsadresse?.x;
+        const lat = hit.y ?? hit.adgangsadresse?.y;
+        if (typeof lat === "number" && typeof lon === "number") {
+          return { lat, lon, kilde: "DAWA" };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("DAWA-opslag fejlede, prøver Nominatim:", e);
+  }
+
+  // 2) Fallback: Nominatim (OpenStreetMap) — virker for adresser uden for Danmark også
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), kilde: "Nominatim" };
+      }
+    }
+  } catch (e) {
+    console.warn("Nominatim-opslag fejlede:", e);
+  }
+
+  return null;
+}
+
+// Haversine-formel: afstand i km mellem to koordinatsæt
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // jordens radius i km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function setStatus(elId, msg, ok) {
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.className = "status " + (ok ? "ok" : "err");
+}
+
+// =========================================================
+// MEDIER
+// =========================================================
+async function loadMedier() {
+  const { data, error } = await supabaseClient.from("medier").select("*").order("navn");
+  if (error) { console.error(error); return; }
+  medierCache = data;
+  renderMedierTable();
+  populateMedieDropdown();
+}
+
+function renderMedierTable() {
+  const tbody = document.getElementById("medieTableBody");
+  tbody.innerHTML = medierCache.map(m => `
+    <tr>
+      <td><strong>${escapeHtml(m.navn)}</strong>${m.landsdaekkende ? ' <span class="pill">Landsdækkende</span>' : ''}</td>
+      <td>${escapeHtml(m.gadeadresse || "")}${m.postnummer ? ", " + escapeHtml(m.postnummer) : ""} ${escapeHtml(m.by || "")}</td>
+      <td>${escapeHtml(m.email || "")}</td>
+      <td>${m.landsdaekkende ? '<span class="muted">Ikke relevant</span>' : (m.latitude != null ? m.latitude.toFixed(5) + ", " + m.longitude.toFixed(5) : '<span class="muted">Ikke geokodet</span>')}</td>
+      <td>
+        <button class="btn secondary" onclick="editMedie('${m.id}')">Rediger</button>
+        <button class="btn danger" onclick="deleteMedie('${m.id}')">Slet</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function populateMedieDropdown() {
+  const sel = document.getElementById("journalistMedie");
+  sel.innerHTML = medierCache.map(m => `<option value="${m.id}">${escapeHtml(m.navn)}</option>`).join("");
+}
+
+document.getElementById("btnGeokod").addEventListener("click", async () => {
+  const adresseParts = [
+    document.getElementById("medieAdresse").value,
+    document.getElementById("mediePostnr").value,
+    document.getElementById("medieBy").value
+  ].filter(Boolean).join(", ");
+
+  if (!adresseParts) {
+    setStatus("medieStatus", "Udfyld adresse, postnummer og/eller by først.", false);
+    return;
+  }
+  setStatus("medieStatus", "Geokoder adresse...", true);
+  const result = await geocodeAddress(adresseParts);
+  if (result) {
+    document.getElementById("medieLat").value = result.lat;
+    document.getElementById("medieLng").value = result.lon;
+    setStatus("medieStatus", `Fundet koordinater via ${result.kilde}.`, true);
+  } else {
+    setStatus("medieStatus", "Kunne ikke finde koordinater for adressen. Indtast evt. manuelt.", false);
+  }
+});
+
+document.getElementById("btnGemMedie").addEventListener("click", async () => {
+  const id = document.getElementById("medieId").value || null;
+  const navn = document.getElementById("medieNavn").value.trim();
+  if (!navn) { setStatus("medieStatus", "Navn er påkrævet.", false); return; }
+
+  const landsdaekkende = document.getElementById("medieLandsdaekkende").checked;
+
+  const payload = {
+    navn,
+    gadeadresse: document.getElementById("medieAdresse").value.trim() || null,
+    postnummer: document.getElementById("mediePostnr").value.trim() || null,
+    by: document.getElementById("medieBy").value.trim() || null,
+    email: document.getElementById("medieEmail").value.trim() || null,
+    noter: document.getElementById("medieNoter").value.trim() || null,
+    latitude: document.getElementById("medieLat").value ? parseFloat(document.getElementById("medieLat").value) : null,
+    longitude: document.getElementById("medieLng").value ? parseFloat(document.getElementById("medieLng").value) : null,
+    landsdaekkende,
+    updated_at: new Date().toISOString()
+  };
+
+  // Auto-geokod hvis adresse er udfyldt men koordinater mangler (ikke nødvendigt for landsdækkende medier)
+  if (!landsdaekkende && payload.gadeadresse && payload.latitude == null) {
+    const auto = await geocodeAddress([payload.gadeadresse, payload.postnummer, payload.by].filter(Boolean).join(", "));
+    if (auto) { payload.latitude = auto.lat; payload.longitude = auto.lon; }
+  }
+
+  let error;
+  if (id) {
+    ({ error } = await supabaseClient.from("medier").update(payload).eq("id", id));
+  } else {
+    ({ error } = await supabaseClient.from("medier").insert(payload));
+  }
+
+  if (error) { setStatus("medieStatus", "Fejl: " + error.message, false); return; }
+  setStatus("medieStatus", "Medie gemt.", true);
+  clearMedieForm();
+  await loadMedier();
+});
+
+document.getElementById("btnRydMedie").addEventListener("click", clearMedieForm);
+
+function clearMedieForm() {
+  document.getElementById("medieId").value = "";
+  document.getElementById("medieFormTitle").textContent = "Opret nyt medie";
+  ["medieNavn","medieAdresse","mediePostnr","medieBy","medieEmail","medieNoter","medieLat","medieLng"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("medieLandsdaekkende").checked = false;
+}
+
+window.editMedie = function(id) {
+  const m = medierCache.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById("medieId").value = m.id;
+  document.getElementById("medieFormTitle").textContent = "Rediger medie: " + m.navn;
+  document.getElementById("medieNavn").value = m.navn || "";
+  document.getElementById("medieAdresse").value = m.gadeadresse || "";
+  document.getElementById("mediePostnr").value = m.postnummer || "";
+  document.getElementById("medieBy").value = m.by || "";
+  document.getElementById("medieEmail").value = m.email || "";
+  document.getElementById("medieNoter").value = m.noter || "";
+  document.getElementById("medieLat").value = m.latitude ?? "";
+  document.getElementById("medieLng").value = m.longitude ?? "";
+  document.getElementById("medieLandsdaekkende").checked = !!m.landsdaekkende;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+window.deleteMedie = async function(id) {
+  if (!confirm("Slet dette medie? Journalister tilknyttet mediet mister deres medie-tilknytning.")) return;
+  const { error } = await supabaseClient.from("medier").delete().eq("id", id);
+  if (error) { alert("Fejl: " + error.message); return; }
+  await loadMedier();
+  await loadJournalister();
+};
+
+// =========================================================
+// JOURNALISTER
+// =========================================================
+async function loadJournalister() {
+  const { data, error } = await supabaseClient.from("journalister").select("*").order("navn");
+  if (error) { console.error(error); return; }
+  journalisterCache = data;
+  renderJournalisterTable();
+}
+
+function medieNavnFor(medieId) {
+  const m = medierCache.find(x => x.id === medieId);
+  return m ? m.navn : '<span class="muted">Intet medie</span>';
+}
+
+function renderJournalisterTable() {
+  const tbody = document.getElementById("journalistTableBody");
+  tbody.innerHTML = journalisterCache.map(j => `
+    <tr class="clickable" onclick="openJournalistDetail('${j.id}')">
+      <td><strong>${escapeHtml(j.navn)}</strong></td>
+      <td>${medieNavnFor(j.medie_id)}</td>
+      <td>${escapeHtml(j.telefon || "")}</td>
+      <td>${escapeHtml(j.email || "")}</td>
+      <td>
+        <button class="btn secondary" onclick="event.stopPropagation(); editJournalist('${j.id}')">Rediger</button>
+        <button class="btn danger" onclick="event.stopPropagation(); deleteJournalist('${j.id}')">Slet</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+document.getElementById("btnGemJournalist").addEventListener("click", async () => {
+  const id = document.getElementById("journalistId").value || null;
+  const navn = document.getElementById("journalistNavn").value.trim();
+  if (!navn) { setStatus("journalistStatus", "Navn er påkrævet.", false); return; }
+  if (medierCache.length === 0) { setStatus("journalistStatus", "Opret mindst ét medie først.", false); return; }
+
+  const payload = {
+    navn,
+    telefon: document.getElementById("journalistTelefon").value.trim() || null,
+    email: document.getElementById("journalistEmail").value.trim() || null,
+    medie_id: document.getElementById("journalistMedie").value,
+    noter: document.getElementById("journalistNoter").value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+
+  let error;
+  if (id) {
+    ({ error } = await supabaseClient.from("journalister").update(payload).eq("id", id));
+  } else {
+    ({ error } = await supabaseClient.from("journalister").insert(payload));
+  }
+
+  if (error) { setStatus("journalistStatus", "Fejl: " + error.message, false); return; }
+  setStatus("journalistStatus", "Journalist gemt.", true);
+  clearJournalistForm();
+  await loadJournalister();
+});
+
+document.getElementById("btnRydJournalist").addEventListener("click", clearJournalistForm);
+
+function clearJournalistForm() {
+  document.getElementById("journalistId").value = "";
+  document.getElementById("journalistFormTitle").textContent = "Opret ny journalist";
+  ["journalistNavn","journalistTelefon","journalistEmail","journalistNoter"].forEach(id => document.getElementById(id).value = "");
+}
+
+window.editJournalist = function(id) {
+  const j = journalisterCache.find(x => x.id === id);
+  if (!j) return;
+  document.getElementById("journalistId").value = j.id;
+  document.getElementById("journalistFormTitle").textContent = "Rediger journalist: " + j.navn;
+  document.getElementById("journalistNavn").value = j.navn || "";
+  document.getElementById("journalistTelefon").value = j.telefon || "";
+  document.getElementById("journalistEmail").value = j.email || "";
+  document.getElementById("journalistMedie").value = j.medie_id || "";
+  document.getElementById("journalistNoter").value = j.noter || "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+window.deleteJournalist = async function(id) {
+  if (!confirm("Slet denne journalist? Al kontakthistorik slettes også.")) return;
+  const { error } = await supabaseClient.from("journalister").delete().eq("id", id);
+  if (error) { alert("Fejl: " + error.message); return; }
+  if (currentJournalistId === id) document.getElementById("journalistDetail").style.display = "none";
+  await loadJournalister();
+};
+
+// ---------------------------------------------------------
+// Kontakthistorik
+// ---------------------------------------------------------
+window.openJournalistDetail = async function(journalistId) {
+  currentJournalistId = journalistId;
+  const j = journalisterCache.find(x => x.id === journalistId);
+  if (!j) return;
+
+  document.getElementById("journalistDetail").style.display = "block";
+  document.getElementById("detailNavn").textContent = j.navn;
+  document.getElementById("detailMedie").textContent = "Medie: " + (medierCache.find(m => m.id === j.medie_id)?.navn || "Intet medie");
+  document.getElementById("kontaktDato").value = new Date().toISOString().slice(0,16);
+  document.getElementById("kontaktNoter").value = "";
+  document.getElementById("journalistDetail").scrollIntoView({ behavior: "smooth" });
+
+  await loadKontaktlog(journalistId);
+};
+
+async function loadKontaktlog(journalistId) {
+  const { data, error } = await supabaseClient
+    .from("kontaktlog")
+    .select("*")
+    .eq("journalist_id", journalistId)
+    .order("dato", { ascending: false });
+
+  if (error) { console.error(error); return; }
+
+  const container = document.getElementById("kontaktListe");
+  if (data.length === 0) {
+    container.innerHTML = '<p class="muted">Ingen kontakthistorik endnu.</p>';
+    return;
+  }
+  container.innerHTML = data.map(k => `
+    <div class="kontakt-item">
+      <div class="kontakt-date">${new Date(k.dato).toLocaleString("da-DK")}</div>
+      <div>${escapeHtml(k.noter || "").replace(/\n/g, "<br>")}</div>
+    </div>
+  `).join("");
+}
+
+document.getElementById("btnGemKontakt").addEventListener("click", async () => {
+  if (!currentJournalistId) return;
+  const noter = document.getElementById("kontaktNoter").value.trim();
+  const datoInput = document.getElementById("kontaktDato").value;
+  if (!noter) { setStatus("kontaktStatus", "Skriv en note først.", false); return; }
+
+  const payload = {
+    journalist_id: currentJournalistId,
+    noter,
+    dato: datoInput ? new Date(datoInput).toISOString() : new Date().toISOString()
+  };
+
+  const { error } = await supabaseClient.from("kontaktlog").insert(payload);
+  if (error) { setStatus("kontaktStatus", "Fejl: " + error.message, false); return; }
+  setStatus("kontaktStatus", "Note tilføjet.", true);
+  document.getElementById("kontaktNoter").value = "";
+  await loadKontaktlog(currentJournalistId);
+});
+
+// =========================================================
+// GEOGRAFISK SØGNING
+// =========================================================
+document.getElementById("btnGeoSoeg").addEventListener("click", async () => {
+  const adresse = document.getElementById("geoAdresse").value.trim();
+  const radius = parseFloat(document.getElementById("geoRadius").value);
+
+  if (!adresse) { setStatus("geoStatus", "Indtast en adresse.", false); return; }
+  if (!radius || radius <= 0) { setStatus("geoStatus", "Indtast en gyldig radius i km.", false); return; }
+
+  setStatus("geoStatus", "Geokoder destination...", true);
+  const dest = await geocodeAddress(adresse);
+  if (!dest) {
+    setStatus("geoStatus", "Kunne ikke finde koordinater for adressen.", false);
+    return;
+  }
+  setStatus("geoStatus", `Destination fundet via ${dest.kilde} (${dest.lat.toFixed(5)}, ${dest.lon.toFixed(5)}). Søger...`, true);
+
+  // Sørg for friske data
+  await loadMedier();
+  await loadJournalister();
+
+  const landsdaekkendeMedier = medierCache
+    .filter(m => m.landsdaekkende);
+
+  const lokaleMedierIRadius = medierCache
+    .filter(m => !m.landsdaekkende && m.latitude != null && m.longitude != null)
+    .map(m => ({ ...m, afstand: haversineKm(dest.lat, dest.lon, m.latitude, m.longitude) }))
+    .filter(m => m.afstand <= radius)
+    .sort((a, b) => a.afstand - b.afstand);
+
+  const resultCard = document.getElementById("geoResultCard");
+  const resultList = document.getElementById("geoResultList");
+  resultCard.style.display = "block";
+
+  const antalIAlt = landsdaekkendeMedier.length + lokaleMedierIRadius.length;
+
+  if (antalIAlt === 0) {
+    document.getElementById("geoResultTitle").textContent = "Ingen resultater";
+    resultList.innerHTML = '<p class="muted">Ingen medier fundet inden for den valgte radius, og ingen landsdækkende medier oprettet.</p>';
+    setStatus("geoStatus", "Søgning færdig.", true);
+    return;
+  }
+
+  document.getElementById("geoResultTitle").textContent =
+    `${antalIAlt} medie(r) fundet (${lokaleMedierIRadius.length} inden for ${radius} km + ${landsdaekkendeMedier.length} landsdækkende)`;
+
+  function renderMedieResultat(m, afstandLabel) {
+    const journalisterForMedie = journalisterCache.filter(j => j.medie_id === m.id);
+    return `
+      <div class="search-result">
+        <strong>${escapeHtml(m.navn)}</strong>
+        <span class="pill">${afstandLabel}</span>
+        <div class="muted">${escapeHtml(m.gadeadresse || "")}${m.gadeadresse ? ", " : ""}${escapeHtml(m.postnummer || "")} ${escapeHtml(m.by || "")}${m.email ? " — " + escapeHtml(m.email) : ""}</div>
+        ${journalisterForMedie.length > 0 ? `
+          <ul>
+            ${journalisterForMedie.map(j => `<li>${escapeHtml(j.navn)} — ${escapeHtml(j.telefon || "ingen tlf.")} — ${escapeHtml(j.email || "ingen e-mail")}</li>`).join("")}
+          </ul>
+        ` : '<p class="muted">Ingen journalister registreret på dette medie.</p>'}
+      </div>
+    `;
+  }
+
+  let html = "";
+  if (landsdaekkendeMedier.length > 0) {
+    html += '<h3>Landsdækkende medier (vises altid)</h3>';
+    html += landsdaekkendeMedier.map(m => renderMedieResultat(m, "Landsdækkende")).join("");
+  }
+  if (lokaleMedierIRadius.length > 0) {
+    html += `<h3>Medier inden for ${radius} km</h3>`;
+    html += lokaleMedierIRadius.map(m => renderMedieResultat(m, m.afstand.toFixed(1) + " km")).join("");
+  } else if (landsdaekkendeMedier.length > 0) {
+    html += `<p class="muted">Ingen lokale medier fundet inden for ${radius} km.</p>`;
+  }
+
+  resultList.innerHTML = html;
+  setStatus("geoStatus", "Søgning færdig.", true);
+});
+
+// ---------------------------------------------------------
+// Hjælpefunktion: undgå HTML-injektion i lister
+// ---------------------------------------------------------
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// ---------------------------------------------------------
+// Init
+// ---------------------------------------------------------
+if (supabaseClient) {
+  loadMedier().then(loadJournalister);
+}
+</script>
+</body>
+</html>
