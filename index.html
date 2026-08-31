@@ -65,6 +65,8 @@
   textarea { min-height: 70px; resize: vertical; }
   .field { margin-bottom: 12px; }
   .row-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .table-actions { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
+  .table-actions .btn { padding: 5px 10px; font-size: 13px; }
   button.btn {
     padding: 8px 14px;
     border: none;
@@ -122,7 +124,10 @@
     <div class="card">
       <div class="list-header">
         <h2 style="margin:0;">Alle medier</h2>
-        <button class="btn btn-create" id="btnVisOpretMedie">+ Opret nyt medie</button>
+        <div class="row-actions" style="margin:0;">
+          <button class="btn secondary" id="btnDownloadMedier">Download CSV</button>
+          <button class="btn btn-create" id="btnVisOpretMedie">+ Opret nyt medie</button>
+        </div>
       </div>
       <div class="field">
         <input id="medieSoegning" placeholder="Søg på navn, by, adresse eller e-mail...">
@@ -227,7 +232,10 @@
     </div>
 
     <div class="card">
-      <h2>Alle journalister</h2>
+      <div class="list-header">
+        <h2 style="margin:0;">Alle journalister</h2>
+        <button class="btn secondary" id="btnDownloadJournalister">Download CSV</button>
+      </div>
       <p class="muted">Klik på en journalist for at se og tilføje kontakthistorik.</p>
       <div class="field">
         <input id="journalistSoegning" placeholder="Søg på navn, medie, telefon eller e-mail...">
@@ -285,7 +293,10 @@
     </div>
 
     <div class="card" id="geoResultCard" style="display:none;">
-      <h2 id="geoResultTitle">Resultater</h2>
+      <div class="list-header">
+        <h2 id="geoResultTitle" style="margin:0;">Resultater</h2>
+        <button class="btn secondary" id="btnDownloadGeoResult">Download CSV</button>
+      </div>
       <div id="geoResultList"></div>
     </div>
   </section>
@@ -312,6 +323,7 @@ if (!SUPABASE_URL.includes("DIT-PROJEKT") && !SUPABASE_ANON_KEY.includes("DIN-AN
 let medierCache = [];
 let journalisterCache = [];
 let currentJournalistId = null;
+let lastGeoResult = null;
 
 // ---------------------------------------------------------
 // Navigation
@@ -418,8 +430,10 @@ function renderMedierTable() {
       <td>${escapeHtml(m.email || "")}</td>
       <td>${m.landsdaekkende ? '<span class="muted">Ikke relevant</span>' : (m.latitude != null ? m.latitude.toFixed(5) + ", " + m.longitude.toFixed(5) : '<span class="muted">Ikke geokodet</span>')}</td>
       <td>
-        <button class="btn secondary" onclick="editMedie('${m.id}')">Rediger</button>
-        <button class="btn danger" onclick="deleteMedie('${m.id}')">Slet</button>
+        <div class="table-actions">
+          <button class="btn secondary" onclick="editMedie('${m.id}')">Rediger</button>
+          <button class="btn danger" onclick="deleteMedie('${m.id}')">Slet</button>
+        </div>
       </td>
     </tr>
   `).join("");
@@ -577,8 +591,10 @@ function renderJournalisterTable() {
       <td>${escapeHtml(j.telefon || "")}</td>
       <td>${escapeHtml(j.email || "")}</td>
       <td>
-        <button class="btn secondary" onclick="event.stopPropagation(); editJournalist('${j.id}')">Rediger</button>
-        <button class="btn danger" onclick="event.stopPropagation(); deleteJournalist('${j.id}')">Slet</button>
+        <div class="table-actions">
+          <button class="btn secondary" onclick="event.stopPropagation(); editJournalist('${j.id}')">Rediger</button>
+          <button class="btn danger" onclick="event.stopPropagation(); deleteJournalist('${j.id}')">Slet</button>
+        </div>
       </td>
     </tr>
   `).join("");
@@ -736,6 +752,8 @@ document.getElementById("btnGeoSoeg").addEventListener("click", async () => {
   resultCard.style.display = "block";
 
   const antalIAlt = landsdaekkendeMedier.length + lokaleMedierIRadius.length;
+  lastGeoResult = { landsdaekkende: landsdaekkendeMedier, lokale: lokaleMedierIRadius };
+  document.getElementById("btnDownloadGeoResult").style.display = antalIAlt > 0 ? "inline-block" : "none";
 
   if (antalIAlt === 0) {
     document.getElementById("geoResultTitle").textContent = "Ingen resultater";
@@ -789,6 +807,84 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+// ---------------------------------------------------------
+// CSV-eksport (åbner direkte i Excel, inkl. danske tegn)
+// ---------------------------------------------------------
+function downloadCSV(filnavn, headers, rows) {
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return "";
+    const str = String(val);
+    if (/[";\n]/.test(str)) {
+      return '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
+  };
+  // Semikolon som separator, da Excel med dansk sprogindstilling
+  // ellers ikke splitter kolonnerne korrekt.
+  const linjer = [headers.map(escapeCsv).join(";")];
+  rows.forEach(r => linjer.push(r.map(escapeCsv).join(";")));
+  // \uFEFF (BOM) sikrer at æ/ø/å vises korrekt når filen åbnes i Excel.
+  const csvIndhold = "\uFEFF" + linjer.join("\r\n");
+  const blob = new Blob([csvIndhold], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filnavn;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function medieNavnPlain(medieId) {
+  return medierCache.find(m => m.id === medieId)?.navn || "";
+}
+
+document.getElementById("btnDownloadMedier").addEventListener("click", () => {
+  const soegetekst = document.getElementById("medieSoegning").value.trim().toLowerCase();
+  const filtreret = !soegetekst ? medierCache : medierCache.filter(m => {
+    const haystack = [m.navn, m.by, m.gadeadresse, m.postnummer, m.email].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(soegetekst);
+  });
+  const headers = ["Navn", "Gadeadresse", "Postnummer", "By", "E-mail", "Landsdækkende", "Breddegrad", "Længdegrad", "Noter"];
+  const rows = filtreret.map(m => [
+    m.navn, m.gadeadresse, m.postnummer, m.by, m.email,
+    m.landsdaekkende ? "Ja" : "Nej", m.latitude, m.longitude, m.noter
+  ]);
+  downloadCSV("medier.csv", headers, rows);
+});
+
+document.getElementById("btnDownloadJournalister").addEventListener("click", () => {
+  const soegetekst = document.getElementById("journalistSoegning").value.trim().toLowerCase();
+  const filtreret = !soegetekst ? journalisterCache : journalisterCache.filter(j => {
+    const haystack = [j.navn, medieNavnPlain(j.medie_id), j.telefon, j.email].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(soegetekst);
+  });
+  const headers = ["Navn", "Medie", "Telefon", "E-mail", "Noter"];
+  const rows = filtreret.map(j => [j.navn, medieNavnPlain(j.medie_id), j.telefon, j.email, j.noter]);
+  downloadCSV("journalister.csv", headers, rows);
+});
+
+document.getElementById("btnDownloadGeoResult").addEventListener("click", () => {
+  if (!lastGeoResult) return;
+  const headers = ["Medie", "Type", "Afstand (km)", "Gadeadresse", "Postnummer", "By", "Medie e-mail", "Journalist", "Telefon", "Journalist e-mail", "Noter (journalist)"];
+  const rows = [];
+  const alleMedier = [...lastGeoResult.landsdaekkende, ...lastGeoResult.lokale];
+  alleMedier.forEach(m => {
+    const journalisterForMedie = journalisterCache.filter(j => j.medie_id === m.id);
+    const type = m.landsdaekkende ? "Landsdækkende" : "Lokal";
+    const afstand = m.afstand != null ? m.afstand.toFixed(1) : "";
+    if (journalisterForMedie.length === 0) {
+      rows.push([m.navn, type, afstand, m.gadeadresse, m.postnummer, m.by, m.email, "", "", "", ""]);
+    } else {
+      journalisterForMedie.forEach(j => {
+        rows.push([m.navn, type, afstand, m.gadeadresse, m.postnummer, m.by, m.email, j.navn, j.telefon, j.email, j.noter]);
+      });
+    }
+  });
+  downloadCSV("geografisk_soegning.csv", headers, rows);
+});
 
 // ---------------------------------------------------------
 // Søgefelter i listerne (filtrerer live, ingen ny database-hentning)
