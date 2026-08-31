@@ -200,12 +200,39 @@
   <!-- ============ JOURNALISTER ============ -->
   <section id="view-journalister" class="view">
     <div class="card">
-      <h2 id="journalistFormTitle">Opret ny journalist</h2>
+      <div class="list-header">
+        <h2 style="margin:0;">Alle journalister</h2>
+        <div class="row-actions" style="margin:0;">
+          <button class="btn secondary" id="btnDownloadJournalister">Download CSV</button>
+          <button class="btn btn-create" id="btnVisOpretJournalist">+ Opret ny journalist</button>
+        </div>
+      </div>
+      <p class="muted">Klik på en journalist for at se og tilføje kontakthistorik.</p>
+      <div class="field">
+        <input id="journalistSoegning" placeholder="Søg på navn, titel, medie, telefon eller e-mail...">
+      </div>
+      <table>
+        <thead>
+          <tr><th>Navn</th><th>Titel</th><th>Medie</th><th>Telefon</th><th>E-mail</th><th></th></tr>
+        </thead>
+        <tbody id="journalistTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="journalistFormCard" style="display:none;">
+      <div class="list-header">
+        <h2 id="journalistFormTitle" style="margin:0;">Opret ny journalist</h2>
+        <button class="btn secondary" id="btnLukJournalistForm">Luk</button>
+      </div>
       <input type="hidden" id="journalistId">
       <div class="grid">
         <div class="field">
           <label>Navn</label>
           <input id="journalistNavn" placeholder="f.eks. Anna Hansen">
+        </div>
+        <div class="field">
+          <label>Titel</label>
+          <input id="journalistTitel" placeholder="f.eks. Journalist, Redaktør">
         </div>
         <div class="field">
           <label>Medie</label>
@@ -231,27 +258,11 @@
       <div id="journalistStatus" class="status"></div>
     </div>
 
-    <div class="card">
-      <div class="list-header">
-        <h2 style="margin:0;">Alle journalister</h2>
-        <button class="btn secondary" id="btnDownloadJournalister">Download CSV</button>
-      </div>
-      <p class="muted">Klik på en journalist for at se og tilføje kontakthistorik.</p>
-      <div class="field">
-        <input id="journalistSoegning" placeholder="Søg på navn, medie, telefon eller e-mail...">
-      </div>
-      <table>
-        <thead>
-          <tr><th>Navn</th><th>Medie</th><th>Telefon</th><th>E-mail</th><th></th></tr>
-        </thead>
-        <tbody id="journalistTableBody"></tbody>
-      </table>
-    </div>
-
     <div class="card" id="journalistDetail" style="display:none;">
       <h2 id="detailNavn"></h2>
       <p class="muted" id="detailMedie"></p>
-      <h3>Tilføj kontaktnote</h3>
+      <h3 id="kontaktFormTitel">Tilføj kontaktnote</h3>
+      <input type="hidden" id="kontaktId">
       <div class="grid">
         <div class="field">
           <label>Dato/tidspunkt</label>
@@ -264,6 +275,7 @@
       </div>
       <div class="row-actions">
         <button class="btn" id="btnGemKontakt">Tilføj til historik</button>
+        <button class="btn secondary" id="btnAnnullerKontakt" style="display:none;">Annuller redigering</button>
       </div>
       <div id="kontaktStatus" class="status"></div>
 
@@ -575,18 +587,19 @@ function renderJournalisterTable() {
   const soegetekst = document.getElementById("journalistSoegning").value.trim().toLowerCase();
   const filtreret = !soegetekst ? journalisterCache : journalisterCache.filter(j => {
     const medieNavnRaa = medierCache.find(m => m.id === j.medie_id)?.navn || "";
-    const haystack = [j.navn, medieNavnRaa, j.telefon, j.email].filter(Boolean).join(" ").toLowerCase();
+    const haystack = [j.navn, j.titel, medieNavnRaa, j.telefon, j.email].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(soegetekst);
   });
 
   const tbody = document.getElementById("journalistTableBody");
   if (filtreret.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="muted">Ingen journalister matcher søgningen.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">Ingen journalister matcher søgningen.</td></tr>`;
     return;
   }
   tbody.innerHTML = filtreret.map(j => `
     <tr class="clickable" onclick="openJournalistDetail('${j.id}')">
       <td><strong>${escapeHtml(j.navn)}</strong></td>
+      <td>${escapeHtml(j.titel || "")}</td>
       <td>${medieNavnFor(j.medie_id)}</td>
       <td>${escapeHtml(j.telefon || "")}</td>
       <td>${escapeHtml(j.email || "")}</td>
@@ -608,6 +621,7 @@ document.getElementById("btnGemJournalist").addEventListener("click", async () =
 
   const payload = {
     navn,
+    titel: document.getElementById("journalistTitel").value.trim() || null,
     telefon: document.getElementById("journalistTelefon").value.trim() || null,
     email: document.getElementById("journalistEmail").value.trim() || null,
     medie_id: document.getElementById("journalistMedie").value,
@@ -626,14 +640,32 @@ document.getElementById("btnGemJournalist").addEventListener("click", async () =
   setStatus("journalistStatus", "Journalist gemt.", true);
   clearJournalistForm();
   await loadJournalister();
+  setTimeout(hideJournalistForm, 800);
 });
+
+function showJournalistForm() {
+  document.getElementById("journalistFormCard").style.display = "block";
+  document.getElementById("journalistFormCard").scrollIntoView({ behavior: "smooth" });
+}
+
+function hideJournalistForm() {
+  document.getElementById("journalistFormCard").style.display = "none";
+}
+
+document.getElementById("btnVisOpretJournalist").addEventListener("click", () => {
+  if (medierCache.length === 0) { alert("Opret mindst ét medie først."); return; }
+  clearJournalistForm();
+  showJournalistForm();
+});
+
+document.getElementById("btnLukJournalistForm").addEventListener("click", hideJournalistForm);
 
 document.getElementById("btnRydJournalist").addEventListener("click", clearJournalistForm);
 
 function clearJournalistForm() {
   document.getElementById("journalistId").value = "";
   document.getElementById("journalistFormTitle").textContent = "Opret ny journalist";
-  ["journalistNavn","journalistTelefon","journalistEmail","journalistNoter"].forEach(id => document.getElementById(id).value = "");
+  ["journalistNavn","journalistTitel","journalistTelefon","journalistEmail","journalistNoter"].forEach(id => document.getElementById(id).value = "");
 }
 
 window.editJournalist = function(id) {
@@ -642,11 +674,12 @@ window.editJournalist = function(id) {
   document.getElementById("journalistId").value = j.id;
   document.getElementById("journalistFormTitle").textContent = "Rediger journalist: " + j.navn;
   document.getElementById("journalistNavn").value = j.navn || "";
+  document.getElementById("journalistTitel").value = j.titel || "";
   document.getElementById("journalistTelefon").value = j.telefon || "";
   document.getElementById("journalistEmail").value = j.email || "";
   document.getElementById("journalistMedie").value = j.medie_id || "";
   document.getElementById("journalistNoter").value = j.noter || "";
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  showJournalistForm();
 };
 
 window.deleteJournalist = async function(id) {
@@ -668,12 +701,13 @@ window.openJournalistDetail = async function(journalistId) {
   document.getElementById("journalistDetail").style.display = "block";
   document.getElementById("detailNavn").textContent = j.navn;
   document.getElementById("detailMedie").textContent = "Medie: " + (medierCache.find(m => m.id === j.medie_id)?.navn || "Intet medie");
-  document.getElementById("kontaktDato").value = new Date().toISOString().slice(0,16);
-  document.getElementById("kontaktNoter").value = "";
+  resetKontaktForm();
   document.getElementById("journalistDetail").scrollIntoView({ behavior: "smooth" });
 
   await loadKontaktlog(journalistId);
 };
+
+let kontaktlogCache = [];
 
 async function loadKontaktlog(journalistId) {
   const { data, error } = await supabaseClient
@@ -683,6 +717,7 @@ async function loadKontaktlog(journalistId) {
     .order("dato", { ascending: false });
 
   if (error) { console.error(error); return; }
+  kontaktlogCache = data;
 
   const container = document.getElementById("kontaktListe");
   if (data.length === 0) {
@@ -693,14 +728,50 @@ async function loadKontaktlog(journalistId) {
     <div class="kontakt-item">
       <div class="kontakt-date">${new Date(k.dato).toLocaleString("da-DK")}</div>
       <div>${escapeHtml(k.noter || "").replace(/\n/g, "<br>")}</div>
+      <div class="table-actions" style="margin-top:6px;">
+        <button class="btn secondary" onclick="editKontakt('${k.id}')">Rediger</button>
+        <button class="btn danger" onclick="deleteKontakt('${k.id}')">Slet</button>
+      </div>
     </div>
   `).join("");
 }
+
+function resetKontaktForm() {
+  document.getElementById("kontaktId").value = "";
+  document.getElementById("kontaktFormTitel").textContent = "Tilføj kontaktnote";
+  document.getElementById("btnGemKontakt").textContent = "Tilføj til historik";
+  document.getElementById("btnAnnullerKontakt").style.display = "none";
+  document.getElementById("kontaktNoter").value = "";
+  document.getElementById("kontaktDato").value = new Date().toISOString().slice(0,16);
+}
+
+window.editKontakt = function(id) {
+  const k = kontaktlogCache.find(x => x.id === id);
+  if (!k) return;
+  document.getElementById("kontaktId").value = k.id;
+  document.getElementById("kontaktFormTitel").textContent = "Rediger kontaktnote";
+  document.getElementById("btnGemKontakt").textContent = "Opdater note";
+  document.getElementById("btnAnnullerKontakt").style.display = "inline-block";
+  document.getElementById("kontaktDato").value = new Date(k.dato).toISOString().slice(0,16);
+  document.getElementById("kontaktNoter").value = k.noter || "";
+  document.getElementById("kontaktFormTitel").scrollIntoView({ behavior: "smooth" });
+};
+
+window.deleteKontakt = async function(id) {
+  if (!confirm("Slet denne kontaktnote? Det kan ikke fortrydes.")) return;
+  const { error } = await supabaseClient.from("kontaktlog").delete().eq("id", id);
+  if (error) { alert("Fejl: " + error.message); return; }
+  if (document.getElementById("kontaktId").value === id) resetKontaktForm();
+  await loadKontaktlog(currentJournalistId);
+};
+
+document.getElementById("btnAnnullerKontakt").addEventListener("click", resetKontaktForm);
 
 document.getElementById("btnGemKontakt").addEventListener("click", async () => {
   if (!currentJournalistId) return;
   const noter = document.getElementById("kontaktNoter").value.trim();
   const datoInput = document.getElementById("kontaktDato").value;
+  const kontaktId = document.getElementById("kontaktId").value || null;
   if (!noter) { setStatus("kontaktStatus", "Skriv en note først.", false); return; }
 
   const payload = {
@@ -709,10 +780,16 @@ document.getElementById("btnGemKontakt").addEventListener("click", async () => {
     dato: datoInput ? new Date(datoInput).toISOString() : new Date().toISOString()
   };
 
-  const { error } = await supabaseClient.from("kontaktlog").insert(payload);
+  let error;
+  if (kontaktId) {
+    ({ error } = await supabaseClient.from("kontaktlog").update(payload).eq("id", kontaktId));
+  } else {
+    ({ error } = await supabaseClient.from("kontaktlog").insert(payload));
+  }
+
   if (error) { setStatus("kontaktStatus", "Fejl: " + error.message, false); return; }
-  setStatus("kontaktStatus", "Note tilføjet.", true);
-  document.getElementById("kontaktNoter").value = "";
+  setStatus("kontaktStatus", kontaktId ? "Note opdateret." : "Note tilføjet.", true);
+  resetKontaktForm();
   await loadKontaktlog(currentJournalistId);
 });
 
@@ -774,7 +851,7 @@ document.getElementById("btnGeoSoeg").addEventListener("click", async () => {
         <div class="muted">${escapeHtml(m.gadeadresse || "")}${m.gadeadresse ? ", " : ""}${escapeHtml(m.postnummer || "")} ${escapeHtml(m.by || "")}${m.email ? " — " + escapeHtml(m.email) : ""}</div>
         ${journalisterForMedie.length > 0 ? `
           <ul>
-            ${journalisterForMedie.map(j => `<li>${escapeHtml(j.navn)} — ${escapeHtml(j.telefon || "ingen tlf.")} — ${escapeHtml(j.email || "ingen e-mail")}</li>`).join("")}
+            ${journalisterForMedie.map(j => `<li>${escapeHtml(j.navn)}${j.titel ? " (" + escapeHtml(j.titel) + ")" : ""} — ${escapeHtml(j.telefon || "ingen tlf.")} — ${escapeHtml(j.email || "ingen e-mail")}</li>`).join("")}
           </ul>
         ` : '<p class="muted">Ingen journalister registreret på dette medie.</p>'}
       </div>
@@ -858,17 +935,17 @@ document.getElementById("btnDownloadMedier").addEventListener("click", () => {
 document.getElementById("btnDownloadJournalister").addEventListener("click", () => {
   const soegetekst = document.getElementById("journalistSoegning").value.trim().toLowerCase();
   const filtreret = !soegetekst ? journalisterCache : journalisterCache.filter(j => {
-    const haystack = [j.navn, medieNavnPlain(j.medie_id), j.telefon, j.email].filter(Boolean).join(" ").toLowerCase();
+    const haystack = [j.navn, j.titel, medieNavnPlain(j.medie_id), j.telefon, j.email].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(soegetekst);
   });
-  const headers = ["Navn", "Medie", "Telefon", "E-mail", "Noter"];
-  const rows = filtreret.map(j => [j.navn, medieNavnPlain(j.medie_id), j.telefon, j.email, j.noter]);
+  const headers = ["Navn", "Titel", "Medie", "Telefon", "E-mail", "Noter"];
+  const rows = filtreret.map(j => [j.navn, j.titel, medieNavnPlain(j.medie_id), j.telefon, j.email, j.noter]);
   downloadCSV("journalister.csv", headers, rows);
 });
 
 document.getElementById("btnDownloadGeoResult").addEventListener("click", () => {
   if (!lastGeoResult) return;
-  const headers = ["Medie", "Type", "Afstand (km)", "Gadeadresse", "Postnummer", "By", "Medie e-mail", "Journalist", "Telefon", "Journalist e-mail", "Noter (journalist)"];
+  const headers = ["Medie", "Type", "Afstand (km)", "Gadeadresse", "Postnummer", "By", "Medie e-mail", "Journalist", "Titel", "Telefon", "Journalist e-mail", "Noter (journalist)"];
   const rows = [];
   const alleMedier = [...lastGeoResult.landsdaekkende, ...lastGeoResult.lokale];
   alleMedier.forEach(m => {
@@ -876,10 +953,10 @@ document.getElementById("btnDownloadGeoResult").addEventListener("click", () => 
     const type = m.landsdaekkende ? "Landsdækkende" : "Lokal";
     const afstand = m.afstand != null ? m.afstand.toFixed(1) : "";
     if (journalisterForMedie.length === 0) {
-      rows.push([m.navn, type, afstand, m.gadeadresse, m.postnummer, m.by, m.email, "", "", "", ""]);
+      rows.push([m.navn, type, afstand, m.gadeadresse, m.postnummer, m.by, m.email, "", "", "", "", ""]);
     } else {
       journalisterForMedie.forEach(j => {
-        rows.push([m.navn, type, afstand, m.gadeadresse, m.postnummer, m.by, m.email, j.navn, j.telefon, j.email, j.noter]);
+        rows.push([m.navn, type, afstand, m.gadeadresse, m.postnummer, m.by, m.email, j.navn, j.titel, j.telefon, j.email, j.noter]);
       });
     }
   });
